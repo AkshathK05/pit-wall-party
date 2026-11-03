@@ -47,6 +47,7 @@ F1 races in the Americas air late at night in India. Friends watch alone and hal
   - AFC warning eliminated by disabling automatic function calling in GenerateContentConfig.
   - GEMINI_MODEL configured strictly from environment (no hardcoded defaults).
   - Race title year duplication fixed.
+  - README rewritten cleanly for reviewers (under 120 lines, no AI look, direct).
   - Round results use strict template for facts/winners, with AI providing one friendly banter line.
   - Full 69-lap simulation and partial slices verified end-to-end.
   - Telegram bot dual mode (polling/webhook) ready.
