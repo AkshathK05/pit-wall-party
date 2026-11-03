@@ -41,6 +41,7 @@ class ReplaySession:
         self.running = False
         self.task: Optional[asyncio.Task] = None
         self.current_lap = 0
+        self.recent_banter: List[str] = []
         # Skip any round whose open lap is before from_lap
         self.rounds: List[Round] = [
             r for r in build_f1_rounds(race_data)
@@ -184,12 +185,14 @@ class ReplaySession:
                                     correct_answer=winners_str,
                                     winner_names=scored_users,
                                     loser_names=zero_users,
-                                    current_leader=leader_name
+                                    current_leader=leader_name,
+                                    recent_banter=self.recent_banter[-2:]
                                 )
                             except Exception as e:
                                 logger.warning("Error generating AI round banter: %s", e)
 
                         if banter_line:
+                            self.recent_banter.append(banter_line)
                             settle_msg = f"{template_result}\n\n{banter_line}"
                         else:
                             settle_msg = template_result

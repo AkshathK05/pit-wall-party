@@ -38,8 +38,12 @@ F1 races in the Americas air late at night in India. Friends watch alone and hal
 - All Phases complete and verified:
   - Code-enforced "why it matters" line for SC, VSC, red flag, penalty, lead change (never overtakes or pits).
   - VSC why-line: "Pitting under a VSC costs less time because everyone else is driving slower."
-  - Grid position passed in facts ONLY for lead changes, nowhere else.
+  - Grid position passed in facts ONLY for lead changes; "grid" or "started" in non-lead commentary triggers fallback.
   - Pit durations >= 10s stripped from AI facts and allowed number list.
+  - Banned list expanded ("half the grid", "whole grid", "everyone", "actually nailed").
+  - Banter prompt passes last 2 banter lines and enforces no reused phrasing.
+  - AFC warning eliminated by disabling automatic function calling in GenerateContentConfig.
+  - GEMINI_MODEL configured strictly from environment (no hardcoded defaults).
   - Race title year duplication fixed.
   - Round results use strict template for facts/winners, with AI providing one friendly banter line.
   - Full 69-lap simulation and partial slices verified end-to-end.

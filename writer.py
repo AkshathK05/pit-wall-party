@@ -13,7 +13,8 @@ BANNED_WORDS = [
     "exciting", "buckle up", "get ready", "let's dive in", "unleash",
     "elevate", "seamless", "game-changer", "thrilling", "electrifying",
     "what a moment", "stay tuned", "everyone", "huge", "massive",
-    "crucial", "valuable", "championship points", "completely"
+    "crucial", "valuable", "championship points", "completely",
+    "half the grid", "whole grid", "actually nailed"
 ]
 
 WORD_TO_DIGIT = {
@@ -42,6 +43,8 @@ ai_stats = {
     "reasons": Counter()
 }
 
+_recent_banter: List[str] = []
+
 def get_ai_stats() -> Dict[str, Any]:
     return ai_stats
 
@@ -49,6 +52,7 @@ def reset_ai_stats() -> None:
     ai_stats["ai_count"] = 0
     ai_stats["fallback_count"] = 0
     ai_stats["reasons"].clear()
+    _recent_banter.clear()
 
 _gemini_client = None
 
@@ -158,10 +162,15 @@ def extract_allowed_numbers(events: List[Dict], extra_numbers: Optional[Set[str]
                     numbers.add(match)
     return numbers
 
-def validate_ai_text(text: str, allowed_numbers: Set[str]) -> Tuple[bool, str]:
+def validate_ai_text(text: str, allowed_numbers: Set[str], is_lead_change: bool = False) -> Tuple[bool, str]:
     for b in BANNED_WORDS:
         if re.search(r"\b" + re.escape(b) + r"\b", text, re.I):
             return False, "banned phrase"
+
+    # If AI text mentions "grid" or "started" and the event is not a lead change, fall back to template
+    if not is_lead_change:
+        if re.search(r"\b(grid|started)\b", text, re.I):
+            return False, "grid/started without lead change"
 
     normalized = text.lower()
     for word, digit in WORD_TO_DIGIT.items():
@@ -181,7 +190,7 @@ def validate_ai_text(text: str, allowed_numbers: Set[str]) -> Tuple[bool, str]:
     return True, ""
 
 async def generate_ai_commentary(events: List[Dict]) -> Optional[str]:
-    if not config.AI_ENABLED or not config.GEMINI_API_KEY:
+    if not config.AI_ENABLED or not config.GEMINI_API_KEY or not config.GEMINI_MODEL:
         return None
 
     client = get_gemini_client()
@@ -199,7 +208,7 @@ async def generate_ai_commentary(events: List[Dict]) -> Optional[str]:
         "2. For lead changes, mention that the driver started from their starting grid position.\n"
         "3. Use driver surnames, not acronym codes.\n"
         "4. Do NOT mention lap numbers.\n"
-        "5. No exaggeration (banned words: 'everyone', 'huge', 'massive', 'crucial', 'valuable', 'championship points', 'completely', 'thrilling', 'exciting', 'game-changer', 'buckle up', 'electrifying').\n"
+        "5. No exaggeration (banned words: 'everyone', 'huge', 'massive', 'crucial', 'valuable', 'championship points', 'completely', 'thrilling', 'exciting', 'game-changer', 'buckle up', 'electrifying', 'half the grid', 'whole grid', 'actually nailed').\n"
         "6. Max 1 emoji across the message. Max 1 exclamation mark.\n"
         "7. Return ONLY strict JSON: {\"text\": \"your commentary here\"}\n\n"
         f"Events: {json.dumps(prepared_events)}"
@@ -207,7 +216,10 @@ async def generate_ai_commentary(events: List[Dict]) -> Optional[str]:
 
     try:
         from google.genai import types
-        cfg = types.GenerateContentConfig(response_mime_type="application/json")
+        cfg = types.GenerateContentConfig(
+            response_mime_type="application/json",
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
+        )
         response = await asyncio.wait_for(
             client.aio.models.generate_content(
                 model=config.GEMINI_MODEL,
@@ -234,7 +246,8 @@ async def generate_ai_commentary(events: List[Dict]) -> Optional[str]:
             ai_stats["reasons"]["bad JSON"] += 1
             return None
 
-        valid, reason = validate_ai_text(text, allowed_numbers)
+        is_lead_change = any(e.get("type") == "overtake" and e.get("new_position") == 1 for e in events)
+        valid, reason = validate_ai_text(text, allowed_numbers, is_lead_change=is_lead_change)
         if not valid:
             ai_stats["fallback_count"] += 1
             ai_stats["reasons"][reason] += 1
@@ -262,14 +275,23 @@ async def generate_ai_round_banter(
     correct_answer: str,
     winner_names: List[str],
     loser_names: List[str],
-    current_leader: str
+    current_leader: str,
+    recent_banter: Optional[List[str]] = None
 ) -> Optional[str]:
-    if not config.AI_ENABLED or not config.GEMINI_API_KEY:
+    if not config.AI_ENABLED or not config.GEMINI_API_KEY or not config.GEMINI_MODEL:
         return None
 
     client = get_gemini_client()
     if not client:
         return None
+
+    past_banters = recent_banter if recent_banter is not None else _recent_banter[-2:]
+    history_note = ""
+    if past_banters:
+        history_items = "\n".join(f"- \"{b}\"" for b in past_banters[-2:])
+        history_note = (
+            f"\nPrevious round banter lines (DO NOT reuse their phrasing, wording, or structure):\n{history_items}\n"
+        )
 
     prompt = (
         "You are a casual friend in an F1 group chat. "
@@ -278,18 +300,23 @@ async def generate_ai_round_banter(
         "1. Write ONLY ONE line of friendly banter. Do NOT repeat or restate the question or winner.\n"
         "2. Use ONLY the provided player names. Do NOT invent any numbers or points.\n"
         "3. Max 1 emoji. Max 1 exclamation mark.\n"
-        "4. No mean banter, no buzzwords.\n"
-        "5. Return ONLY strict JSON: {\"banter\": \"your banter line here\"}\n\n"
+        "4. No mean banter, no buzzwords (banned words: 'actually nailed', 'half the grid', 'whole grid', 'everyone').\n"
+        "5. Do NOT reuse wording, phrasing, or sentence patterns from the previous banter lines.\n"
+        "6. Return ONLY strict JSON: {\"banter\": \"your banter line here\"}\n\n"
         f"Question: {question}\n"
         f"Correct Answer: {correct_answer}\n"
         f"Players who got it right: {', '.join(winner_names) if winner_names else 'None'}\n"
         f"Players who missed: {', '.join(loser_names) if loser_names else 'None'}\n"
         f"Group Leader: {current_leader}"
+        f"{history_note}"
     )
 
     try:
         from google.genai import types
-        cfg = types.GenerateContentConfig(response_mime_type="application/json")
+        cfg = types.GenerateContentConfig(
+            response_mime_type="application/json",
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
+        )
         response = await asyncio.wait_for(
             client.aio.models.generate_content(
                 model=config.GEMINI_MODEL,
@@ -316,14 +343,16 @@ async def generate_ai_round_banter(
             ai_stats["reasons"]["bad JSON"] += 1
             return None
 
-        valid, reason = validate_ai_text(banter, set())
+        valid, reason = validate_ai_text(banter, set(), is_lead_change=False)
         if not valid:
             ai_stats["fallback_count"] += 1
             ai_stats["reasons"][reason] += 1
             return None
 
         ai_stats["ai_count"] += 1
-        return _clean_text(banter)
+        cleaned_banter = _clean_text(banter)
+        _recent_banter.append(cleaned_banter)
+        return cleaned_banter
 
     except asyncio.TimeoutError:
         logger.info("AI fallback on round banter: timeout (5s)")

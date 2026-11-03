@@ -15,7 +15,7 @@ services:
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_MODEL
-        value: gemini-2.5-flash
+        sync: false
       - key: AI_ENABLED
         value: "true"
       - key: SECONDS_PER_LAP
