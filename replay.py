@@ -7,8 +7,9 @@ from writer import (
     format_final_results,
     format_leaderboard,
     generate_ai_commentary,
-    generate_ai_round_result,
-    to_surname
+    generate_ai_round_banter,
+    to_surname,
+    event_priority
 )
 import db
 
@@ -39,7 +40,11 @@ class ReplaySession:
         self.running = False
         self.task: Optional[asyncio.Task] = None
         self.current_lap = 0
-        self.rounds: List[Round] = build_f1_rounds(race_data)
+        # Skip any round whose open lap is before from_lap
+        self.rounds: List[Round] = [
+            r for r in build_f1_rounds(race_data)
+            if r.open_lap >= self.from_lap
+        ]
 
     async def start(self) -> None:
         if self.running:
@@ -92,7 +97,9 @@ class ReplaySession:
                 # 2. Process lap events
                 lap_str = str(lap)
                 lap_info = self.race_data["laps"].get(lap_str, {})
-                events = list(lap_info.get("events", []))
+                raw_events = list(lap_info.get("events", []))
+                # Sort events by priority: red flag, SC/VSC, lead change, penalty, overtakes, pits
+                events = sorted(raw_events, key=event_priority)
 
                 # Lead changes get their own message sent first
                 lead_changes = [
@@ -107,10 +114,11 @@ class ReplaySession:
                 for lc in lead_changes:
                     d = to_surname(lc.get("driver", "Driver"))
                     p = to_surname(lc.get("passed", "car"))
+                    grid = lc.get("starting_grid", 1)
                     lc_ai = None
                     if self.use_ai:
                         lc_ai = await generate_ai_commentary([lc])
-                    msg = lc_ai if lc_ai else f"Lead change: {d} gets past {p} to take P1."
+                    msg = lc_ai if lc_ai else f"Lead change: {d} gets past {p} to take P1 (started P{grid})."
                     await self._emit(msg)
 
                 # Use AI only for: SC/VSC/red flag, penalties, laps with 3+ events
@@ -157,21 +165,29 @@ class ReplaySession:
                         winners_str = ", ".join(to_surname(w) for w in winners)
                         fan_line = f"10 pts to: {', '.join(scored_users)}." if scored_users else "Nobody scored this round."
 
-                        settle_msg = None
+                        # The result line is ALWAYS the template
+                        template_result = f"Result: {r.question}\nWinner: {winners_str}. {r.explanation}\n{fan_line}"
+
+                        # AI writes only one banter line after it (if AI fails, no banter line)
+                        banter_line = None
                         if self.use_ai:
                             try:
-                                settle_msg = await generate_ai_round_result(
+                                lb_current = db.get_leaderboard(self.chat_id)
+                                leader_name = lb_current[0]["name"] if lb_current else "Arjun"
+                                banter_line = await generate_ai_round_banter(
                                     question=r.question,
-                                    winner=winners_str,
-                                    explanation=r.explanation,
-                                    scored_users=scored_users,
-                                    zero_users=zero_users
+                                    correct_answer=winners_str,
+                                    winner_names=scored_users,
+                                    loser_names=zero_users,
+                                    current_leader=leader_name
                                 )
                             except Exception as e:
-                                logger.warning("Error generating AI round result: %s", e)
+                                logger.warning("Error generating AI round banter: %s", e)
 
-                        if not settle_msg:
-                            settle_msg = f"Result: {r.question}\nWinner: {winners_str}. {r.explanation}\n{fan_line}"
+                        if banter_line:
+                            settle_msg = f"{template_result}\n\n{banter_line}"
+                        else:
+                            settle_msg = template_result
 
                         await self._emit(settle_msg)
 

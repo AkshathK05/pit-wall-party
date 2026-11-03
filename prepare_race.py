@@ -68,6 +68,14 @@ def main():
     for num in driver_pos_history:
         driver_pos_history[num].sort(key=lambda x: x[0])
 
+    # Record starting grid position for each driver
+    start_grid = {}
+    for num, code in driver_num_to_code.items():
+        if driver_pos_history.get(num):
+            grid = driver_pos_history[num][0][1]
+            drivers[code]["grid_position"] = grid
+            start_grid[code] = grid
+
     # 4. Fetch race control first to find red flags
     raw_rc = fetch_openf1("race_control", {"session_key": session_key})
     red_flag_laps = {
@@ -245,13 +253,16 @@ def main():
                         # Ignore if passed driver pitted on this lap or previous lap
                         if (passed_code, lap) in pits_by_driver_lap or (passed_code, lap - 1) in pits_by_driver_lap:
                             continue
-                        lap_events.append({
+                        ot_dict = {
                             "type": "overtake",
                             "lap": lap,
                             "driver": code,
                             "passed": passed_code,
                             "new_position": curr_pos
-                        })
+                        }
+                        if curr_pos == 1:
+                            ot_dict["starting_grid"] = start_grid.get(code, 1)
+                        lap_events.append(ot_dict)
                         event_counts["overtake"] += 1
 
         # Add pit events

@@ -10,121 +10,141 @@
       "number": 1,
       "code": "VER",
       "name": "Max VERSTAPPEN",
-      "team": "Red Bull Racing"
+      "team": "Red Bull Racing",
+      "grid_position": 17
     },
     "NOR": {
       "number": 4,
       "code": "NOR",
       "name": "Lando NORRIS",
-      "team": "McLaren"
+      "team": "McLaren",
+      "grid_position": 1
     },
     "GAS": {
       "number": 10,
       "code": "GAS",
       "name": "Pierre GASLY",
-      "team": "Alpine"
+      "team": "Alpine",
+      "grid_position": 13
     },
     "PER": {
       "number": 11,
       "code": "PER",
       "name": "Sergio PEREZ",
-      "team": "Red Bull Racing"
+      "team": "Red Bull Racing",
+      "grid_position": 12
     },
     "ALO": {
       "number": 14,
       "code": "ALO",
       "name": "Fernando ALONSO",
-      "team": "Aston Martin"
+      "team": "Aston Martin",
+      "grid_position": 9
     },
     "LEC": {
       "number": 16,
       "code": "LEC",
       "name": "Charles LECLERC",
-      "team": "Ferrari"
+      "team": "Ferrari",
+      "grid_position": 6
     },
     "STR": {
       "number": 18,
       "code": "STR",
       "name": "Lance STROLL",
-      "team": "Aston Martin"
+      "team": "Aston Martin",
+      "grid_position": 10
     },
     "TSU": {
       "number": 22,
       "code": "TSU",
       "name": "Yuki TSUNODA",
-      "team": "RB"
+      "team": "RB",
+      "grid_position": 3
     },
     "ALB": {
       "number": 23,
       "code": "ALB",
       "name": "Alexander ALBON",
-      "team": "Williams"
+      "team": "Williams",
+      "grid_position": 7
     },
     "ZHO": {
       "number": 24,
       "code": "ZHO",
       "name": "ZHOU Guanyu",
-      "team": "Kick Sauber"
+      "team": "Kick Sauber",
+      "grid_position": 19
     },
     "HUL": {
       "number": 27,
       "code": "HUL",
       "name": "Nico HULKENBERG",
-      "team": "Haas F1 Team"
+      "team": "Haas F1 Team",
+      "grid_position": 18
     },
     "LAW": {
       "number": 30,
       "code": "LAW",
       "name": "Liam LAWSON",
-      "team": "RB"
+      "team": "RB",
+      "grid_position": 5
     },
     "OCO": {
       "number": 31,
       "code": "OCO",
       "name": "Esteban OCON",
-      "team": "Alpine"
+      "team": "Alpine",
+      "grid_position": 4
     },
     "COL": {
       "number": 43,
       "code": "COL",
       "name": "Franco COLAPINTO",
-      "team": "Williams"
+      "team": "Williams",
+      "grid_position": 16
     },
     "HAM": {
       "number": 44,
       "code": "HAM",
       "name": "Lewis HAMILTON",
-      "team": "Mercedes"
+      "team": "Mercedes",
+      "grid_position": 14
     },
     "BEA": {
       "number": 50,
       "code": "BEA",
       "name": "Oliver BEARMAN",
-      "team": "Haas F1 Team"
+      "team": "Haas F1 Team",
+      "grid_position": 15
     },
     "SAI": {
       "number": 55,
       "code": "SAI",
       "name": "Carlos SAINZ",
-      "team": "Ferrari"
+      "team": "Ferrari",
+      "grid_position": 20
     },
     "RUS": {
       "number": 63,
       "code": "RUS",
       "name": "George RUSSELL",
-      "team": "Mercedes"
+      "team": "Mercedes",
+      "grid_position": 2
     },
     "BOT": {
       "number": 77,
       "code": "BOT",
       "name": "Valtteri BOTTAS",
-      "team": "Kick Sauber"
+      "team": "Kick Sauber",
+      "grid_position": 11
     },
     "PIA": {
       "number": 81,
       "code": "PIA",
       "name": "Oscar PIASTRI",
-      "team": "McLaren"
+      "team": "McLaren",
+      "grid_position": 8
     }
   },
   "laps": {
@@ -1419,7 +1439,8 @@
           "lap": 43,
           "driver": "VER",
           "passed": "OCO",
-          "new_position": 1
+          "new_position": 1,
+          "starting_grid": 17
         },
         {
           "type": "overtake",

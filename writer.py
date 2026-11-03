@@ -12,8 +12,21 @@ logger = logging.getLogger("pitwall.writer")
 BANNED_WORDS = [
     "exciting", "buckle up", "get ready", "let's dive in", "unleash",
     "elevate", "seamless", "game-changer", "thrilling", "electrifying",
-    "what a moment", "stay tuned", "everyone", "huge", "massive"
+    "what a moment", "stay tuned", "everyone", "huge", "massive",
+    "crucial", "valuable", "championship points", "completely"
 ]
+
+WORD_TO_DIGIT = {
+    "zero": "0", "one": "1", "two": "2", "three": "3", "four": "4",
+    "five": "5", "six": "6", "seven": "7", "eight": "8", "nine": "9",
+    "ten": "10", "eleven": "11", "twelve": "12", "thirteen": "13",
+    "fourteen": "14", "fifteen": "15", "sixteen": "16", "seventeen": "17",
+    "eighteen": "18", "nineteen": "19", "twenty": "20", "thirty": "30",
+    "forty": "40", "fifty": "50", "sixty": "60", "seventy": "70",
+    "eighty": "80", "ninety": "90", "hundred": "100",
+    "first": "1", "second": "2", "third": "3", "fourth": "4", "fifth": "5",
+    "sixth": "6", "seventh": "7", "eighth": "8", "ninth": "9", "tenth": "10"
+}
 
 DRIVER_SURNAMES = {
     "VER": "Verstappen", "NOR": "Norris", "LEC": "Leclerc", "RUS": "Russell",
@@ -62,9 +75,27 @@ def format_lap_time(seconds: float) -> str:
 def to_surname(code: str) -> str:
     return DRIVER_SURNAMES.get(code, code)
 
+def event_priority(e: Dict) -> int:
+    # Priority: red flag, SC/VSC, lead change, penalty, overtakes, pits
+    t = e.get("type", "")
+    if t == "red_flag":
+        return 1
+    if t in ("safety_car_deployed", "safety_car_ending", "vsc_deployed", "vsc_ending"):
+        return 2
+    if t == "overtake" and e.get("new_position") == 1:
+        return 3
+    if t == "penalty":
+        return 4
+    if t == "overtake":
+        return 5
+    if t == "pit":
+        return 6
+    return 7
+
 def prepare_event_facts(events: List[Dict]) -> List[Dict]:
+    sorted_events = sorted(events, key=event_priority)
     prepared = []
-    for ev in events:
+    for ev in sorted_events:
         c = dict(ev)
         if "driver" in c:
             c["driver"] = to_surname(c["driver"])
@@ -95,13 +126,17 @@ def extract_allowed_numbers(events: List[Dict], extra_numbers: Optional[Set[str]
     return numbers
 
 def validate_ai_text(text: str, allowed_numbers: Set[str]) -> Tuple[bool, str]:
-    # 1. Banned words check: fall back to template rather than stripping words
+    # 1. Banned words check
     for b in BANNED_WORDS:
         if re.search(r"\b" + re.escape(b) + r"\b", text, re.I):
             return False, "banned phrase"
 
-    # 2. Check for numerical hallucinations
-    found_numbers = re.findall(r"\b\d+(?:\.\d+)?\b", text)
+    # 2. Number check: normalize word numbers to digits first
+    normalized = text.lower()
+    for word, digit in WORD_TO_DIGIT.items():
+        normalized = re.sub(r"\b" + re.escape(word) + r"\b", digit, normalized)
+
+    found_numbers = re.findall(r"\b\d+(?:\.\d+)?\b", normalized)
     for num in found_numbers:
         if num not in allowed_numbers:
             matching = False
@@ -131,13 +166,15 @@ async def generate_ai_commentary(events: List[Dict]) -> Optional[str]:
         "CRITICAL RULES:\n"
         "1. Lead with the single most important event.\n"
         "2. Add ONE plain-English 'why it matters' line for casual fans "
-        "(general F1 knowledge allowed, e.g. 'a safety car closes up the field' or 'pitting under VSC saves about 10 seconds'). "
-        "No race-specific claims beyond the facts provided.\n"
-        "3. Use driver surnames, not acronym codes.\n"
-        "4. Do NOT mention lap numbers.\n"
-        "5. No exaggeration (banned words: 'everyone', 'huge', 'massive', 'thrilling', 'exciting', 'game-changer', 'buckle up', 'electrifying').\n"
-        "6. Max 1 emoji across the message. Max 1 exclamation mark.\n"
-        "7. Return ONLY strict JSON: {\"text\": \"your commentary here\"}\n\n"
+        "(general F1 knowledge allowed, e.g. 'a safety car closes up the field'). "
+        "Do NOT include any numbers in the 'why it matters' line. "
+        "If there is no genuine insight, omit the 'why it matters' line.\n"
+        "3. For lead changes, mention that the driver started from their starting grid position.\n"
+        "4. Use driver surnames, not acronym codes.\n"
+        "5. Do NOT mention lap numbers.\n"
+        "6. No exaggeration (banned words: 'everyone', 'huge', 'massive', 'crucial', 'valuable', 'championship points', 'completely', 'thrilling', 'exciting', 'game-changer', 'buckle up', 'electrifying').\n"
+        "7. Max 1 emoji across the message. Max 1 exclamation mark.\n"
+        "8. Return ONLY strict JSON: {\"text\": \"your commentary here\"}\n\n"
         f"Events: {json.dumps(prepared_events)}"
     )
 
@@ -193,12 +230,12 @@ async def generate_ai_commentary(events: List[Dict]) -> Optional[str]:
         ai_stats["reasons"][f"API error ({code_str})"] += 1
         return None
 
-async def generate_ai_round_result(
+async def generate_ai_round_banter(
     question: str,
-    winner: str,
-    explanation: str,
-    scored_users: List[str],
-    zero_users: List[str]
+    correct_answer: str,
+    winner_names: List[str],
+    loser_names: List[str],
+    current_leader: str
 ) -> Optional[str]:
     if not config.AI_ENABLED or not config.GEMINI_API_KEY:
         return None
@@ -207,27 +244,20 @@ async def generate_ai_round_result(
     if not client:
         return None
 
-    allowed_numbers = {"10", "0"}
-    for match in re.findall(r"\d+(?:\.\d+)?", explanation):
-        allowed_numbers.add(match)
-
-    winner_name = to_surname(winner)
-
     prompt = (
-        "You are a casual friend in an F1 group chat announcing the result of a live prediction round.\n"
-        "Write a short result announcement plus ONE line of friendly banter about who got it right or wrong.\n\n"
+        "You are a casual friend in an F1 group chat. "
+        "Write ONLY ONE short line of friendly banter about who got the prediction right or wrong.\n\n"
         "CRITICAL RULES:\n"
-        "1. State the winner and why in 1 short sentence.\n"
-        "2. Add ONE line of friendly banter using ONLY the provided player names and points (10 pts for correct, 0 for wrong).\n"
-        "3. Do not invent any names, numbers, or facts.\n"
-        "4. Friendly group chat tone. Max 1 emoji. Max 1 exclamation mark.\n"
-        "5. No exaggeration (banned words: 'everyone', 'huge', 'massive', 'thrilling', 'exciting', 'game-changer', 'buckle up').\n"
-        "6. Return ONLY strict JSON: {\"text\": \"your text here\"}\n\n"
-        f"Round Question: {question}\n"
-        f"Winning Pick: {winner_name}\n"
-        f"Fact: {explanation}\n"
-        f"Players who scored 10 pts: {', '.join(scored_users) if scored_users else 'None'}\n"
-        f"Players who scored 0 pts: {', '.join(zero_users) if zero_users else 'None'}"
+        "1. Write ONLY ONE line of friendly banter. Do NOT repeat or restate the question or winner.\n"
+        "2. Use ONLY the provided player names. Do NOT invent any numbers or points.\n"
+        "3. Max 1 emoji. Max 1 exclamation mark.\n"
+        "4. No mean banter, no buzzwords.\n"
+        "5. Return ONLY strict JSON: {\"banter\": \"your banter line here\"}\n\n"
+        f"Question: {question}\n"
+        f"Correct Answer: {correct_answer}\n"
+        f"Players who got it right: {', '.join(winner_names) if winner_names else 'None'}\n"
+        f"Players who missed: {', '.join(loser_names) if loser_names else 'None'}\n"
+        f"Group Leader: {current_leader}"
     )
 
     try:
@@ -253,23 +283,24 @@ async def generate_ai_round_result(
             ai_stats["reasons"]["bad JSON"] += 1
             return None
 
-        text = data.get("text", "").strip()
-        if not text:
+        banter = data.get("banter", "").strip()
+        if not banter:
             ai_stats["fallback_count"] += 1
             ai_stats["reasons"]["bad JSON"] += 1
             return None
 
-        valid, reason = validate_ai_text(text, allowed_numbers)
+        # Number check for banter: banter must not invent numbers
+        valid, reason = validate_ai_text(banter, set())
         if not valid:
             ai_stats["fallback_count"] += 1
             ai_stats["reasons"][reason] += 1
             return None
 
         ai_stats["ai_count"] += 1
-        return _clean_text(text)
+        return _clean_text(banter)
 
     except asyncio.TimeoutError:
-        logger.info("AI fallback on round result: timeout (5s)")
+        logger.info("AI fallback on round banter: timeout (5s)")
         ai_stats["fallback_count"] += 1
         ai_stats["reasons"]["timeout"] += 1
         return None
@@ -277,7 +308,7 @@ async def generate_ai_round_result(
         err_msg = str(e)
         code_match = re.search(r"\b(4\d\d|5\d\d)\b", err_msg)
         code_str = f"HTTP {code_match.group(1)}" if code_match else type(e).__name__
-        logger.info("AI fallback on round result: %s (%s)", code_str, err_msg[:80])
+        logger.info("AI fallback on round banter: %s (%s)", code_str, err_msg[:80])
         ai_stats["fallback_count"] += 1
         ai_stats["reasons"][f"API error ({code_str})"] += 1
         return None
@@ -332,11 +363,14 @@ def format_lap_message(
     if ai_text:
         lines.append(ai_text)
     else:
+        # Sort events by priority: red flag, SC/VSC, lead change, penalty, overtakes, pits
+        sorted_events = sorted(events, key=event_priority)
+
         overtakes_by_driver: Dict[str, Dict] = {}
         pit_events = []
         other_events = []
 
-        for ev in events:
+        for ev in sorted_events:
             etype = ev.get("type")
             if etype == "overtake":
                 d = to_surname(ev.get("driver", "Driver"))
@@ -356,6 +390,13 @@ def format_lap_message(
             else:
                 other_events.append(ev)
 
+        # 1. Other high priority events first (red flag, SC/VSC, penalty)
+        for ev in other_events:
+            txt = format_event_template(ev)
+            if txt:
+                lines.append(txt)
+
+        # 2. Overtakes
         for d, oinfo in overtakes_by_driver.items():
             passed = oinfo["passed"]
             pos = oinfo["new_position"]
@@ -367,6 +408,7 @@ def format_lap_message(
                 passed_str = ", ".join(passed[:-1]) + f" and {passed[-1]}"
                 lines.append(f"{d} gets past {passed_str}, up to P{pos}.")
 
+        # 3. Pits
         if len(pit_events) > 3:
             drivers = [to_surname(p["driver"]) for p in pit_events]
             sample = ", ".join(drivers[:3])
@@ -376,11 +418,6 @@ def format_lap_message(
                 txt = format_event_template(p)
                 if txt:
                     lines.append(txt)
-
-        for ev in other_events:
-            txt = format_event_template(ev)
-            if txt:
-                lines.append(txt)
 
     if not lines:
         return None

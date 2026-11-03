@@ -62,14 +62,14 @@ async def main():
     print("=" * 60)
 
     async def handle_message(cid: str, text: str, buttons=None, round_id=None):
-        print("\n" + "-" * 40)
-        print(text)
+        print("\n" + "-" * 40, flush=True)
+        print(text, flush=True)
         if buttons and round_id:
-            print(f"[Buttons: {' | '.join(buttons)}]")
+            print(f"[Buttons: {' | '.join(buttons)}]", flush=True)
             for uid, name in FAKE_USERS:
                 pick = random.choice(buttons)
                 db.record_vote(cid, uid, name, round_id, pick)
-                print(f"  -> {name} voted: {pick}")
+                print(f"  -> {name} voted: {pick}", flush=True)
 
     session = ReplaySession(
         chat_id=chat_id,
