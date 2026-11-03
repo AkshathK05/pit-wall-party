@@ -76,7 +76,6 @@ def to_surname(code: str) -> str:
     return DRIVER_SURNAMES.get(code, code)
 
 def event_priority(e: Dict) -> int:
-    # Priority: red flag, SC/VSC, lead change, penalty, overtakes, pits
     t = e.get("type", "")
     if t == "red_flag":
         return 1
@@ -91,6 +90,22 @@ def event_priority(e: Dict) -> int:
     if t == "pit":
         return 6
     return 7
+
+def get_why_it_matters_line(events: List[Dict]) -> Optional[str]:
+    # Only add for: SC, VSC, red flag, penalty, lead change. Overtakes and pits never get one.
+    for ev in events:
+        t = ev.get("type", "")
+        if t == "red_flag":
+            return "Red flag rules allow teams a free tire change in the pit lane."
+        if t == "safety_car_deployed":
+            return "The safety car bunches up the pack and wipes out all time gaps."
+        if t == "vsc_deployed":
+            return "Pitting under a VSC saves roughly 10 seconds compared to normal racing speed."
+        if t == "penalty":
+            return "Time penalties are served at the next pit stop or added at the finish."
+        if t == "overtake" and ev.get("new_position") == 1:
+            return "Leading the race gives clean air and lets the driver control the pace."
+    return None
 
 def prepare_event_facts(events: List[Dict]) -> List[Dict]:
     sorted_events = sorted(events, key=event_priority)
@@ -126,12 +141,10 @@ def extract_allowed_numbers(events: List[Dict], extra_numbers: Optional[Set[str]
     return numbers
 
 def validate_ai_text(text: str, allowed_numbers: Set[str]) -> Tuple[bool, str]:
-    # 1. Banned words check
     for b in BANNED_WORDS:
         if re.search(r"\b" + re.escape(b) + r"\b", text, re.I):
             return False, "banned phrase"
 
-    # 2. Number check: normalize word numbers to digits first
     normalized = text.lower()
     for word, digit in WORD_TO_DIGIT.items():
         normalized = re.sub(r"\b" + re.escape(word) + r"\b", digit, normalized)
@@ -162,19 +175,15 @@ async def generate_ai_commentary(events: List[Dict]) -> Optional[str]:
 
     prompt = (
         "You are a knowledgeable, casual friend watching F1 in a group chat with friends. "
-        "Rewrite these exact race events into at most 2 short sentences.\n\n"
+        "Rewrite these exact race events into 1-2 lively, casual chat sentences.\n\n"
         "CRITICAL RULES:\n"
         "1. Lead with the single most important event.\n"
-        "2. Add ONE plain-English 'why it matters' line for casual fans "
-        "(general F1 knowledge allowed, e.g. 'a safety car closes up the field'). "
-        "Do NOT include any numbers in the 'why it matters' line. "
-        "If there is no genuine insight, omit the 'why it matters' line.\n"
-        "3. For lead changes, mention that the driver started from their starting grid position.\n"
-        "4. Use driver surnames, not acronym codes.\n"
-        "5. Do NOT mention lap numbers.\n"
-        "6. No exaggeration (banned words: 'everyone', 'huge', 'massive', 'crucial', 'valuable', 'championship points', 'completely', 'thrilling', 'exciting', 'game-changer', 'buckle up', 'electrifying').\n"
-        "7. Max 1 emoji across the message. Max 1 exclamation mark.\n"
-        "8. Return ONLY strict JSON: {\"text\": \"your commentary here\"}\n\n"
+        "2. For lead changes, mention that the driver started from their starting grid position.\n"
+        "3. Use driver surnames, not acronym codes.\n"
+        "4. Do NOT mention lap numbers.\n"
+        "5. No exaggeration (banned words: 'everyone', 'huge', 'massive', 'crucial', 'valuable', 'championship points', 'completely', 'thrilling', 'exciting', 'game-changer', 'buckle up', 'electrifying').\n"
+        "6. Max 1 emoji across the message. Max 1 exclamation mark.\n"
+        "7. Return ONLY strict JSON: {\"text\": \"your commentary here\"}\n\n"
         f"Events: {json.dumps(prepared_events)}"
     )
 
@@ -289,7 +298,6 @@ async def generate_ai_round_banter(
             ai_stats["reasons"]["bad JSON"] += 1
             return None
 
-        # Number check for banter: banter must not invent numbers
         valid, reason = validate_ai_text(banter, set())
         if not valid:
             ai_stats["fallback_count"] += 1
@@ -363,9 +371,7 @@ def format_lap_message(
     if ai_text:
         lines.append(ai_text)
     else:
-        # Sort events by priority: red flag, SC/VSC, lead change, penalty, overtakes, pits
         sorted_events = sorted(events, key=event_priority)
-
         overtakes_by_driver: Dict[str, Dict] = {}
         pit_events = []
         other_events = []
@@ -390,13 +396,11 @@ def format_lap_message(
             else:
                 other_events.append(ev)
 
-        # 1. Other high priority events first (red flag, SC/VSC, penalty)
         for ev in other_events:
             txt = format_event_template(ev)
             if txt:
                 lines.append(txt)
 
-        # 2. Overtakes
         for d, oinfo in overtakes_by_driver.items():
             passed = oinfo["passed"]
             pos = oinfo["new_position"]
@@ -408,7 +412,6 @@ def format_lap_message(
                 passed_str = ", ".join(passed[:-1]) + f" and {passed[-1]}"
                 lines.append(f"{d} gets past {passed_str}, up to P{pos}.")
 
-        # 3. Pits
         if len(pit_events) > 3:
             drivers = [to_surname(p["driver"]) for p in pit_events]
             sample = ", ".join(drivers[:3])
@@ -418,6 +421,11 @@ def format_lap_message(
                 txt = format_event_template(p)
                 if txt:
                     lines.append(txt)
+
+    # In code enforcement: only add why-it-matters line for SC, VSC, red flag, penalty, lead change
+    why_line = get_why_it_matters_line(events)
+    if why_line:
+        lines.append(why_line)
 
     if not lines:
         return None

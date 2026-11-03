@@ -9,7 +9,8 @@ from writer import (
     generate_ai_commentary,
     generate_ai_round_banter,
     to_surname,
-    event_priority
+    event_priority,
+    get_why_it_matters_line
 )
 import db
 
@@ -119,6 +120,9 @@ class ReplaySession:
                     if self.use_ai:
                         lc_ai = await generate_ai_commentary([lc])
                     msg = lc_ai if lc_ai else f"Lead change: {d} gets past {p} to take P1 (started P{grid})."
+                    why_lead = get_why_it_matters_line([lc])
+                    if why_lead:
+                        msg = f"{msg}\n{why_lead}"
                     await self._emit(msg)
 
                 # Use AI only for: SC/VSC/red flag, penalties, laps with 3+ events

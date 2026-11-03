@@ -36,7 +36,9 @@ F1 races in the Americas air late at night in India. Friends watch alone and hal
 
 ## Current Status
 - All Phases complete and verified:
-  - `simulate.py --fast` run with live Gemini AI producing chat commentary.
+  - Code-enforced "why it matters" line for SC, VSC, red flag, penalty, lead change (never overtakes or pits).
+  - Round results use strict template for facts/winners, with AI providing one friendly banter line.
+  - Slices supported (`--from-lap` / `--to-lap`) and verified at 8s/lap on laps 25–45.
   - Telemetry tracked: AI commentary count + fallback counts and reasons.
   - Telegram bot dual mode (polling/webhook) ready.
   - Render blueprint configuration ready.
