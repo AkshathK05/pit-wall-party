@@ -86,7 +86,7 @@ def build_f1_rounds(race_data: Dict[str, Any]) -> List[Round]:
         explanation_builder=lambda d: "Charles Leclerc pitted on lap 24."
     ))
 
-    # Round 2: Safety car before lap 35? (Open 15, close 19)
+    # Round 2: Safety car or VSC before lap 35? (Open 15, close 19)
     def eval_r2(data: Dict, lap: int) -> Optional[str]:
         events = data["laps"].get(str(lap), {}).get("events", [])
         for e in events:
@@ -98,7 +98,7 @@ def build_f1_rounds(race_data: Dict[str, Any]) -> List[Round]:
 
     rounds.append(Round(
         round_id="r2",
-        question="Safety car before lap 35?",
+        question="Safety car or VSC before lap 35?",
         options=["Yes", "No"],
         open_lap=15,
         close_lap=19,
@@ -106,11 +106,11 @@ def build_f1_rounds(race_data: Dict[str, Any]) -> List[Round]:
         explanation_builder=lambda d: "Virtual Safety Car deployed on lap 28."
     ))
 
-    # Round 3: Safety car before lap 45? (Open 34, close 38 - green flag window)
+    # Round 3: Safety car or VSC before lap 45? (Open 34, close 38 - green flag window)
     def eval_r3(data: Dict, lap: int) -> Optional[str]:
         events = data["laps"].get(str(lap), {}).get("events", [])
         for e in events:
-            if e.get("type") == "safety_car_deployed":
+            if e.get("type") in ("safety_car_deployed", "vsc_deployed"):
                 return "Yes"
         if lap == 45:
             return "No"
@@ -118,7 +118,7 @@ def build_f1_rounds(race_data: Dict[str, Any]) -> List[Round]:
 
     rounds.append(Round(
         round_id="r3",
-        question="Safety car before lap 45?",
+        question="Safety car or VSC before lap 45?",
         options=["Yes", "No"],
         open_lap=34,
         close_lap=38,
@@ -157,7 +157,7 @@ def build_f1_rounds(race_data: Dict[str, Any]) -> List[Round]:
         explanation_builder=lambda d: "Lewis Hamilton gained 1 place by lap 59."
     ))
 
-    # Round 5: Another safety car before the finish? (Open 52, close 56)
+    # Round 5: Another safety car or VSC before the finish? (Open 52, close 56)
     # Settle strictly at race finish (lap 69)
     def eval_r5(data: Dict, lap: int) -> Optional[str]:
         total = data["race_info"]["total_laps"]
@@ -172,7 +172,7 @@ def build_f1_rounds(race_data: Dict[str, Any]) -> List[Round]:
 
     rounds.append(Round(
         round_id="r5",
-        question="Another safety car before the finish?",
+        question="Another safety car or VSC before the finish?",
         options=["Yes", "No"],
         open_lap=52,
         close_lap=56,

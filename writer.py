@@ -2,7 +2,8 @@ import re
 import json
 import logging
 import asyncio
-from typing import List, Dict, Optional, Set, Any
+from collections import Counter
+from typing import List, Dict, Optional, Set, Any, Tuple
 
 import config
 
@@ -13,6 +14,20 @@ BANNED_WORDS = [
     "elevate", "seamless", "game-changer", "thrilling", "electrifying",
     "what a moment", "stay tuned"
 ]
+
+ai_stats = {
+    "ai_count": 0,
+    "fallback_count": 0,
+    "reasons": Counter()
+}
+
+def get_ai_stats() -> Dict[str, Any]:
+    return ai_stats
+
+def reset_ai_stats() -> None:
+    ai_stats["ai_count"] = 0
+    ai_stats["fallback_count"] = 0
+    ai_stats["reasons"].clear()
 
 _gemini_client = None
 
@@ -25,13 +40,9 @@ def get_gemini_client():
 
 def _clean_text(text: str) -> str:
     cleaned = text
-    for b in BANNED_WORDS:
-        pattern = re.compile(re.escape(b), re.IGNORECASE)
-        cleaned = pattern.sub("", cleaned)
     if cleaned.count("!") > 1:
         parts = cleaned.split("!")
         cleaned = parts[0] + "!" + "".join(parts[1:]).replace("!", ".")
-    # Clean multiple spaces on each line while preserving line breaks
     lines = [re.sub(r"[ \t]+", " ", line).strip() for line in cleaned.splitlines()]
     return "\n".join(l for l in lines if l)
 
@@ -41,7 +52,6 @@ def format_lap_time(seconds: float) -> str:
     return f"{m}:{s:06.3f}"
 
 def extract_allowed_numbers(lap: int, total_laps: int, events: List[Dict]) -> Set[str]:
-    # Collect all numbers appearing in the input facts
     numbers = {str(lap), str(total_laps)}
     for ev in events:
         for k, v in ev.items():
@@ -60,11 +70,16 @@ def extract_allowed_numbers(lap: int, total_laps: int, events: List[Dict]) -> Se
                     numbers.add(match)
     return numbers
 
-def validate_ai_text(text: str, allowed_numbers: Set[str]) -> bool:
-    # 1. Check for numerical hallucinations
+def validate_ai_text(text: str, allowed_numbers: Set[str]) -> Tuple[bool, str]:
+    # 1. Banned words check: fall back to template rather than stripping words
+    for b in BANNED_WORDS:
+        if re.search(r"\b" + re.escape(b) + r"\b", text, re.I):
+            logger.info("AI output contained banned phrase: '%s'", b)
+            return False, "banned phrase"
+
+    # 2. Check for numerical hallucinations
     found_numbers = re.findall(r"\b\d+(?:\.\d+)?\b", text)
     for num in found_numbers:
-        # Check if the number is in allowed_numbers or a substring of an allowed formatted lap time
         if num not in allowed_numbers:
             matching = False
             for allowed in allowed_numbers:
@@ -72,16 +87,10 @@ def validate_ai_text(text: str, allowed_numbers: Set[str]) -> bool:
                     matching = True
                     break
             if not matching:
-                logger.warning("AI hallucinated number '%s' not in facts: %s", num, allowed_numbers)
-                return False
+                logger.info("AI hallucinated number '%s' not in input facts", num)
+                return False, "number check"
 
-    # 2. Check for banned words
-    for b in BANNED_WORDS:
-        if re.search(r"\b" + re.escape(b) + r"\b", text, re.I):
-            logger.warning("AI output contained banned phrase: %s", b)
-            return False
-
-    return True
+    return True, ""
 
 async def generate_ai_commentary(lap: int, total_laps: int, events: List[Dict]) -> Optional[str]:
     if not config.AI_ENABLED or not config.GEMINI_API_KEY:
@@ -109,7 +118,7 @@ async def generate_ai_commentary(lap: int, total_laps: int, events: List[Dict]) 
     try:
         from google.genai import types
         cfg = types.GenerateContentConfig(response_mime_type="application/json")
-        # 5 second strict timeout
+        # 5 second timeout
         response = await asyncio.wait_for(
             client.aio.models.generate_content(
                 model=config.GEMINI_MODEL,
@@ -119,24 +128,41 @@ async def generate_ai_commentary(lap: int, total_laps: int, events: List[Dict]) 
             timeout=5.0
         )
         if not response or not response.text:
+            ai_stats["fallback_count"] += 1
+            ai_stats["reasons"]["bad JSON"] += 1
             return None
 
-        data = json.loads(response.text)
+        try:
+            data = json.loads(response.text)
+        except Exception:
+            ai_stats["fallback_count"] += 1
+            ai_stats["reasons"]["bad JSON"] += 1
+            return None
+
         text = data.get("text", "").strip()
         if not text:
+            ai_stats["fallback_count"] += 1
+            ai_stats["reasons"]["bad JSON"] += 1
             return None
 
-        # Safety net validation
-        if not validate_ai_text(text, allowed_numbers):
+        valid, reason = validate_ai_text(text, allowed_numbers)
+        if not valid:
+            ai_stats["fallback_count"] += 1
+            ai_stats["reasons"][reason] += 1
             return None
 
+        ai_stats["ai_count"] += 1
         return _clean_text(text)
 
     except asyncio.TimeoutError:
-        logger.warning("Gemini commentary timed out (5s) on lap %d. Falling back to template.", lap)
+        logger.info("AI fallback on lap %d: timeout", lap)
+        ai_stats["fallback_count"] += 1
+        ai_stats["reasons"]["timeout"] += 1
         return None
     except Exception as e:
-        logger.warning("Gemini error on lap %d: %s. Falling back to template.", lap, e)
+        logger.info("AI fallback on lap %d: API error (%s)", lap, e)
+        ai_stats["fallback_count"] += 1
+        ai_stats["reasons"]["API error"] += 1
         return None
 
 def format_event_template(event: Dict) -> str:
@@ -189,7 +215,6 @@ def format_lap_message(
     if ai_text:
         lines.append(ai_text)
     else:
-        # Group overtakes per driver
         overtakes_by_driver: Dict[str, Dict] = {}
         pit_events = []
         other_events = []

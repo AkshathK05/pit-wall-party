@@ -5,7 +5,15 @@ import asyncio
 import argparse
 from pathlib import Path
 
+# Ensure UTF-8 output on Windows terminal
+if sys.stdout.encoding != "utf-8":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 import db
+import writer
 from replay import ReplaySession
 
 FAKE_USERS = [
@@ -30,8 +38,8 @@ async def main():
     chat_id = "simulator_group"
     db.init_db("pitwall.db")
     db.reset_chat(chat_id)
+    writer.reset_ai_stats()
 
-    # Fast mode: 0.05s per lap so 69 laps finish in ~3.5s
     seconds_per_lap = 0.05 if args.fast else 1.0
 
     print("=" * 60)
@@ -44,7 +52,6 @@ async def main():
         print(text)
         if buttons and round_id:
             print(f"[Buttons: {' | '.join(buttons)}]")
-            # Simulate fake users voting
             for uid, name in FAKE_USERS:
                 pick = random.choice(buttons)
                 db.record_vote(cid, uid, name, round_id, pick)
@@ -62,7 +69,13 @@ async def main():
     if session.task:
         await session.task
 
+    stats = writer.get_ai_stats()
     print("\n" + "=" * 60)
+    print(f"AI messages: {stats['ai_count']}, fallback: {stats['fallback_count']}")
+    if stats["reasons"]:
+        print("Fallback reasons:")
+        for reason, count in stats["reasons"].items():
+            print(f"  - {reason}: {count}")
     print("SIMULATION COMPLETED SUCCESSFULLY")
     print("=" * 60)
 
