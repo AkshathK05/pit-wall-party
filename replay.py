@@ -6,7 +6,9 @@ from writer import (
     format_lap_message,
     format_final_results,
     format_leaderboard,
-    generate_ai_commentary
+    generate_ai_commentary,
+    generate_ai_round_result,
+    to_surname
 )
 import db
 
@@ -22,7 +24,9 @@ class ReplaySession:
         seconds_per_lap: float,
         send_message_cb: Callable,
         close_round_cb: Optional[Callable] = None,
-        use_ai: bool = False
+        use_ai: bool = False,
+        from_lap: int = 1,
+        to_lap: Optional[int] = None
     ):
         self.chat_id = str(chat_id)
         self.race_data = race_data
@@ -30,6 +34,8 @@ class ReplaySession:
         self.send_message_cb = send_message_cb
         self.close_round_cb = close_round_cb
         self.use_ai = use_ai
+        self.from_lap = from_lap
+        self.to_lap = to_lap or race_data["race_info"]["total_laps"]
         self.running = False
         self.task: Optional[asyncio.Task] = None
         self.current_lap = 0
@@ -61,10 +67,11 @@ class ReplaySession:
         race_name = self.race_data["race_info"]["name"]
         year = self.race_data["race_info"]["year"]
 
-        await self._emit(f"Starting replay: {year} {race_name} ({total_laps} laps).")
+        start_info = f"Starting replay: {year} {race_name} (Laps {self.from_lap}-{self.to_lap} of {total_laps})."
+        await self._emit(start_info)
 
         try:
-            for lap in range(1, total_laps + 1):
+            for lap in range(self.from_lap, self.to_lap + 1):
                 if not self.running:
                     break
                 self.current_lap = lap
@@ -98,14 +105,25 @@ class ReplaySession:
                 ]
 
                 for lc in lead_changes:
-                    d = lc.get("driver")
-                    p = lc.get("passed")
-                    await self._emit(f"Lead change: {d} gets past {p} to take P1.")
+                    d = to_surname(lc.get("driver", "Driver"))
+                    p = to_surname(lc.get("passed", "car"))
+                    lc_ai = None
+                    if self.use_ai:
+                        lc_ai = await generate_ai_commentary([lc])
+                    msg = lc_ai if lc_ai else f"Lead change: {d} gets past {p} to take P1."
+                    await self._emit(msg)
+
+                # Use AI only for: SC/VSC/red flag, penalties, laps with 3+ events
+                should_use_ai = self.use_ai and (
+                    any(e.get("type") in ("safety_car_deployed", "vsc_deployed", "red_flag") for e in remaining_events) or
+                    any(e.get("type") == "penalty" for e in remaining_events) or
+                    len(remaining_events) >= 3
+                )
 
                 ai_text = None
-                if self.use_ai and remaining_events:
+                if should_use_ai and remaining_events:
                     try:
-                        ai_text = await generate_ai_commentary(lap, total_laps, remaining_events)
+                        ai_text = await generate_ai_commentary(remaining_events)
                     except Exception as e:
                         logger.warning("Error generating AI commentary: %s", e)
 
@@ -128,28 +146,45 @@ class ReplaySession:
                         winners = r.winner or []
                         votes = db.get_votes(self.chat_id, r.id)
                         scored_users = []
+                        zero_users = []
                         for uid, uname, choice in votes:
                             if choice in winners:
                                 db.add_points(self.chat_id, uid, uname, 10)
                                 scored_users.append(uname)
+                            else:
+                                zero_users.append(uname)
 
-                        winners_str = ", ".join(winners)
-                        if scored_users:
-                            fan_line = f"10 pts to: {', '.join(scored_users)}."
-                        else:
-                            fan_line = "Nobody scored this round."
+                        winners_str = ", ".join(to_surname(w) for w in winners)
+                        fan_line = f"10 pts to: {', '.join(scored_users)}." if scored_users else "Nobody scored this round."
 
-                        settle_msg = f"Result: {r.question}\nWinner: {winners_str}. {r.explanation}\n{fan_line}"
+                        settle_msg = None
+                        if self.use_ai:
+                            try:
+                                settle_msg = await generate_ai_round_result(
+                                    question=r.question,
+                                    winner=winners_str,
+                                    explanation=r.explanation,
+                                    scored_users=scored_users,
+                                    zero_users=zero_users
+                                )
+                            except Exception as e:
+                                logger.warning("Error generating AI round result: %s", e)
+
+                        if not settle_msg:
+                            settle_msg = f"Result: {r.question}\nWinner: {winners_str}. {r.explanation}\n{fan_line}"
+
                         await self._emit(settle_msg)
+
+                        # Skip posting leaderboard when everyone has 0
                         lb = db.get_leaderboard(self.chat_id)
-                        if lb:
+                        if lb and any(s["score"] > 0 for s in lb):
                             await self._emit(format_leaderboard(lb))
 
                 # Lap delay
                 await asyncio.sleep(self.seconds_per_lap)
 
             # Replay complete
-            if self.running:
+            if self.running and self.to_lap == total_laps:
                 last_lap_str = str(total_laps)
                 final_pos = self.race_data["laps"].get(last_lap_str, {}).get("positions", {})
                 sorted_finish = sorted(final_pos.items(), key=lambda x: x[1])
