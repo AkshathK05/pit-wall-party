@@ -72,6 +72,18 @@ async def cmd_race(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         session = active_replays.get(chat_id)
         if session and session.running:
             session.stop()
+            keys_to_clear = [k for k in list(round_message_ids.keys()) if k[0] == chat_id]
+            for k in keys_to_clear:
+                mid = round_message_ids.pop(k, None)
+                if mid:
+                    try:
+                        await context.bot.edit_message_reply_markup(
+                            chat_id=int(chat_id),
+                            message_id=mid,
+                            reply_markup=None
+                        )
+                    except Exception as e:
+                        logger.debug("Could not clear buttons on stop for message %s: %s", mid, e)
             await update.effective_message.reply_text("Replay stopped.")
         else:
             await update.effective_message.reply_text("No replay currently running in this group.")
@@ -95,6 +107,9 @@ async def cmd_race(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         db.reset_chat(chat_id)
 
         async def send_msg(cid: str, text: str, buttons: Optional[List[str]] = None, round_id: Optional[str] = None):
+            session = active_replays.get(cid)
+            if not session or not session.running:
+                return
             reply_markup = None
             if buttons and round_id:
                 keyboard = [

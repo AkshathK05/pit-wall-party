@@ -41,7 +41,9 @@ F1 races in the Americas air late at night in India. Friends watch alone and hal
   - Grid position passed in facts ONLY for lead changes; "grid" or "started" in non-lead commentary triggers fallback.
   - Pit durations >= 10s stripped from AI facts and allowed number list.
   - Banned list expanded ("half the grid", "whole grid", "everyone", "actually nailed").
-  - Banter prompt passes last 2 banter lines and enforces no reused phrasing.
+  - Banter structured data with explicit winner/loser counts; names strictly treated as player names.
+  - Contradictory zero-winner claim check (if winner_count > 0 and banter mentions nobody/no one/none of us/all missed -> no banter fallback).
+  - /race stop clears all open round inline buttons immediately; drops any pending lap message before/after "Replay stopped."
   - AFC warning eliminated by disabling automatic function calling in GenerateContentConfig.
   - GEMINI_MODEL configured strictly from environment (no hardcoded defaults).
   - Race title year duplication fixed.

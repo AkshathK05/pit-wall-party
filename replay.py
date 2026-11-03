@@ -62,6 +62,8 @@ class ReplaySession:
         active_replays.pop(self.chat_id, None)
 
     async def _emit(self, text: str, buttons: Optional[List[str]] = None, round_id: Optional[str] = None) -> None:
+        if not self.running:
+            return
         try:
             res = self.send_message_cb(self.chat_id, text, buttons=buttons, round_id=round_id)
             if asyncio.iscoroutine(res):

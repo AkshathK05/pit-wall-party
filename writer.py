@@ -293,21 +293,30 @@ async def generate_ai_round_banter(
             f"\nPrevious round banter lines (DO NOT reuse their phrasing, wording, or structure):\n{history_items}\n"
         )
 
+    banter_facts = {
+        "question": question,
+        "correct_answer": correct_answer,
+        "winner_count": len(winner_names),
+        "winners": winner_names,
+        "loser_count": len(loser_names),
+        "losers": loser_names,
+        "current_leader": current_leader
+    }
+
     prompt = (
         "You are a casual friend in an F1 group chat. "
         "Write ONLY ONE short line of friendly banter about who got the prediction right or wrong.\n\n"
         "CRITICAL RULES:\n"
         "1. Write ONLY ONE line of friendly banter. Do NOT repeat or restate the question or winner.\n"
-        "2. Use ONLY the provided player names. Do NOT invent any numbers or points.\n"
-        "3. Max 1 emoji. Max 1 exclamation mark.\n"
-        "4. No mean banter, no buzzwords (banned words: 'actually nailed', 'half the grid', 'whole grid', 'everyone').\n"
-        "5. Do NOT reuse wording, phrasing, or sentence patterns from the previous banter lines.\n"
-        "6. Return ONLY strict JSON: {\"banter\": \"your banter line here\"}\n\n"
-        f"Question: {question}\n"
-        f"Correct Answer: {correct_answer}\n"
-        f"Players who got it right: {', '.join(winner_names) if winner_names else 'None'}\n"
-        f"Players who missed: {', '.join(loser_names) if loser_names else 'None'}\n"
-        f"Group Leader: {current_leader}"
+        "2. All items in 'winners' and 'losers' are literal human user display names (e.g. someone may literally have the username 'Nobody'). "
+        "Treat all names strictly as proper nouns / player names, never as English nouns or pronouns. "
+        "Notice 'winner_count': if winner_count > 0, those players won! Never say nobody won when winner_count > 0.\n"
+        "3. Use ONLY the provided player names. Do NOT invent any numbers or points.\n"
+        "4. Max 1 emoji. Max 1 exclamation mark.\n"
+        "5. No mean banter, no buzzwords (banned words: 'actually nailed', 'half the grid', 'whole grid', 'everyone').\n"
+        "6. Do NOT reuse wording, phrasing, or sentence patterns from the previous banter lines.\n"
+        "7. Return ONLY strict JSON: {\"banter\": \"your banter line here\"}\n\n"
+        f"Round Facts: {json.dumps(banter_facts)}"
         f"{history_note}"
     )
 
@@ -343,7 +352,19 @@ async def generate_ai_round_banter(
             ai_stats["reasons"]["bad JSON"] += 1
             return None
 
-        valid, reason = validate_ai_text(banter, set(), is_lead_change=False)
+        # If winner_count > 0 and banter claims nobody won, fall back to no banter
+        if len(winner_names) > 0:
+            lower_banter = banter.lower()
+            for phrase in ("nobody", "no one", "none of us", "all missed"):
+                if phrase in lower_banter:
+                    ai_stats["fallback_count"] += 1
+                    ai_stats["reasons"]["contradictory zero-winner claim"] += 1
+                    return None
+
+        allowed_banter_numbers = set(re.findall(r"\d+", question))
+        allowed_banter_numbers.update({"1", "10", str(len(winner_names))})
+
+        valid, reason = validate_ai_text(banter, allowed_banter_numbers, is_lead_change=False)
         if not valid:
             ai_stats["fallback_count"] += 1
             ai_stats["reasons"][reason] += 1
