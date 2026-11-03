@@ -1,10 +1,10 @@
 # Pit Wall Party
 
-F1 races in the Americas air late at night in India, leaving friends to watch alone and half-asleep in quiet, fragmented chats. Pit Wall Party turns a Telegram group into an interactive watch party by fast-replaying a real past Grand Prix (~8 seconds per lap, ~10 minutes total), posting key track moments with context, and hosting live prediction rounds settled automatically from real race data.
+F1 races in the Americas air after midnight in India. Fans who stay up watch alone, group chats move too fast, and the quiet middle stretches are when people drift off and miss what matters. Pit Wall Party turns a Telegram group into an interactive watch party by fast-replaying a real past Grand Prix (~8 seconds per lap, ~10 minutes total), posting key track moments with context, and hosting live prediction rounds settled automatically from real race data.
 
 ## Try it
 
-Bot link: https://t.me/[BotUsername]
+Bot link: https://t.me/pitwallparty_bot
 
 1. Add the bot to your Telegram group.
 2. Send `/race replay` to begin the race replay.
@@ -58,7 +58,7 @@ cp .env.example .env
 Environment variables in `.env`:
 - `TELEGRAM_BOT_TOKEN`: bot token from @BotFather.
 - `GEMINI_API_KEY`: API key from Google AI Studio.
-- `GEMINI_MODEL`: Gemini model identifier (e.g. `gemini-2.5-flash`).
+- `GEMINI_MODEL`: Gemini model identifier (e.g. `gemini-3.5-flash-lite`).
 - `AI_ENABLED`: `true` to enable Gemini commentary, `false` for templates only.
 - `SECONDS_PER_LAP`: replay speed in seconds per lap (default `8`).
 - `WEBHOOK_URL`: leave empty for local long-polling.
@@ -108,5 +108,5 @@ pit-wall-party/
 
 - Single pre-processed race: race data is offline-cached for the 2024 São Paulo GP (69 laps); adding new races requires running `prepare_race.py`.
 - Ephemeral storage on free tier: SQLite database resets on free-tier server restarts.
-- Cold start delay: free hosting on Render sleeps when idle, taking ~50 seconds to respond to the initial command.
+- Cold start delay: free hosting on Render sleeps when idle, taking about a minute to respond to the initial command.
 - Gemini quota fallback: if API rate limits or network timeouts occur, commentary automatically falls back to deterministic code templates.
