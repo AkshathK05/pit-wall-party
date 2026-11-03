@@ -1,0 +1,6 @@
+python-telegram-bot[webhooks]==22.8
+google-genai==2.34.0
+requests==2.34.2
+tornado==6.6
+httpx==0.28.1
+pydantic==2.14.2

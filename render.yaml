@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: pit-wall-party
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: WEBHOOK_URL
+        sync: false
+      - key: WEBHOOK_SECRET
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: AI_ENABLED
+        value: "true"
+      - key: SECONDS_PER_LAP
+        value: "8"
+      - key: PORT
+        fromPort: true
