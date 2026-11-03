@@ -72,8 +72,9 @@ class ReplaySession:
         total_laps = self.race_data["race_info"]["total_laps"]
         race_name = self.race_data["race_info"]["name"]
         year = self.race_data["race_info"]["year"]
+        race_title = race_name if str(year) in race_name else f"{year} {race_name}"
 
-        start_info = f"Starting replay: {year} {race_name} (Laps {self.from_lap}-{self.to_lap} of {total_laps})."
+        start_info = f"Starting replay: {race_title} (Laps {self.from_lap}-{self.to_lap} of {total_laps})."
         await self._emit(start_info)
 
         try:

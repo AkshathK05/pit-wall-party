@@ -100,7 +100,7 @@ def get_why_it_matters_line(events: List[Dict]) -> Optional[str]:
         if t == "safety_car_deployed":
             return "The safety car bunches up the pack and wipes out all time gaps."
         if t == "vsc_deployed":
-            return "Pitting under a VSC saves roughly 10 seconds compared to normal racing speed."
+            return "Pitting under a VSC costs less time because everyone else is driving slower."
         if t == "penalty":
             return "Time penalties are served at the next pit stop or added at the finish."
         if t == "overtake" and ev.get("new_position") == 1:
@@ -118,6 +118,24 @@ def prepare_event_facts(events: List[Dict]) -> List[Dict]:
             c["passed"] = to_surname(c["passed"])
         if "time" in c and isinstance(c["time"], (int, float)):
             c["time"] = format_lap_time(float(c["time"]))
+
+        # Grid position in facts ONLY for lead changes, nowhere else
+        is_lead_change = (c.get("type") == "overtake" and c.get("new_position") == 1)
+        if not is_lead_change:
+            c.pop("starting_grid", None)
+            c.pop("grid_position", None)
+            c.pop("grid", None)
+
+        # Never pass pit durations >= 10s to the AI
+        if c.get("type") == "pit":
+            dur = c.get("duration")
+            if dur is not None:
+                try:
+                    if float(dur) >= 10.0:
+                        c.pop("duration", None)
+                except (ValueError, TypeError):
+                    c.pop("duration", None)
+
         prepared.append(c)
     return prepared
 
@@ -171,7 +189,7 @@ async def generate_ai_commentary(events: List[Dict]) -> Optional[str]:
         return None
 
     prepared_events = prepare_event_facts(events)
-    allowed_numbers = extract_allowed_numbers(events)
+    allowed_numbers = extract_allowed_numbers(prepared_events)
 
     prompt = (
         "You are a knowledgeable, casual friend watching F1 in a group chat with friends. "

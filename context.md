@@ -37,9 +37,12 @@ F1 races in the Americas air late at night in India. Friends watch alone and hal
 ## Current Status
 - All Phases complete and verified:
   - Code-enforced "why it matters" line for SC, VSC, red flag, penalty, lead change (never overtakes or pits).
+  - VSC why-line: "Pitting under a VSC costs less time because everyone else is driving slower."
+  - Grid position passed in facts ONLY for lead changes, nowhere else.
+  - Pit durations >= 10s stripped from AI facts and allowed number list.
+  - Race title year duplication fixed.
   - Round results use strict template for facts/winners, with AI providing one friendly banter line.
-  - Slices supported (`--from-lap` / `--to-lap`) and verified at 8s/lap on laps 25–45.
-  - Telemetry tracked: AI commentary count + fallback counts and reasons.
+  - Full 69-lap simulation and partial slices verified end-to-end.
   - Telegram bot dual mode (polling/webhook) ready.
   - Render blueprint configuration ready.
 
